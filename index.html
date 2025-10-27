@@ -52,20 +52,104 @@
             currentUser: null
         };
 
-        function loadData() {
-            const saved = localStorage.getItem('appData');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                APP_DATA.users = parsed.users || APP_DATA.users;
-                APP_DATA.formularios = parsed.formularios || [];
+        // Configuração do Firebase (banco de dados em nuvem gratuito)
+        const FIREBASE_CONFIG = {
+            databaseURL: 'https://sistema-gestao-default-rtdb.firebaseio.com/'
+        };
+
+        // Funções para comunicação com o banco de dados em nuvem
+        async function loadDataFromCloud() {
+            try {
+                // Carrega usuários
+                const usersResponse = await fetch(`${FIREBASE_CONFIG.databaseURL}/users.json`);
+                if (usersResponse.ok) {
+                    const usersData = await usersResponse.json();
+                    if (usersData) {
+                        APP_DATA.users = Object.values(usersData);
+                    }
+                }
+
+                // Carrega formulários
+                const formsResponse = await fetch(`${FIREBASE_CONFIG.databaseURL}/formularios.json`);
+                if (formsResponse.ok) {
+                    const formsData = await formsResponse.json();
+                    if (formsData) {
+                        APP_DATA.formularios = Object.values(formsData);
+                    }
+                }
+
+                // Fallback para dados locais se não conseguir carregar da nuvem
+                if (APP_DATA.users.length === 0) {
+                    loadDataLocal();
+                }
+            } catch (error) {
+                console.log('Usando dados locais como fallback');
+                loadDataLocal();
             }
         }
 
-        function saveData() {
+        async function saveDataToCloud() {
+            try {
+                // Salva usuários na nuvem
+                const usersObj = {};
+                APP_DATA.users.forEach((user, index) => {
+                    usersObj[`user_${user.cpf}`] = user;
+                });
+                
+                await fetch(`${FIREBASE_CONFIG.databaseURL}/users.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(usersObj)
+                });
+
+                // Salva formulários na nuvem
+                const formsObj = {};
+                APP_DATA.formularios.forEach((form, index) => {
+                    formsObj[`form_${Date.now()}_${index}`] = form;
+                });
+                
+                await fetch(`${FIREBASE_CONFIG.databaseURL}/formularios.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formsObj)
+                });
+
+                // Também salva localmente como backup
+                saveDataLocal();
+            } catch (error) {
+                console.log('Erro ao salvar na nuvem, salvando localmente');
+                saveDataLocal();
+            }
+        }
+
+        function loadDataLocal() {
+            const saved = localStorage.getItem('appData');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (APP_DATA.users.length <= 1) { // Só carrega se não tiver dados da nuvem
+                    APP_DATA.users = parsed.users || APP_DATA.users;
+                }
+                if (APP_DATA.formularios.length === 0) {
+                    APP_DATA.formularios = parsed.formularios || [];
+                }
+            }
+        }
+
+        function saveDataLocal() {
             localStorage.setItem('appData', JSON.stringify({
                 users: APP_DATA.users,
                 formularios: APP_DATA.formularios
             }));
+        }
+
+        // Função principal para carregar dados
+        async function loadData() {
+            await loadDataFromCloud();
+        }
+
+        // Função principal para salvar dados
+        async function saveData() {
+            await saveDataToCloud();
         }
 
         function showToast(message, type = 'success') {
@@ -395,6 +479,7 @@
                 APP_DATA.currentUser = user;
                 showToast('Login realizado com sucesso!');
                 render();
+                startAutoRefresh(); // Inicia atualização automática
             } else {
                 showToast('CPF ou senha incorretos!', 'error');
             }
@@ -551,9 +636,25 @@
             setTimeout(cancelDelete, 3000);
         }
 
-        function refreshDashboard() {
-            showToast('Dashboard atualizado!');
+        async function refreshDashboard() {
+            showToast('Atualizando dados da nuvem...');
+            await loadData();
             render();
+            showToast('Dashboard atualizado com dados da nuvem!');
+        }
+
+        // Atualização automática a cada 10 segundos para o admin
+        function startAutoRefresh() {
+            if (APP_DATA.currentUser && APP_DATA.currentUser.tipo === 'admin') {
+                setInterval(async () => {
+                    const currentFormCount = APP_DATA.formularios.length;
+                    await loadData();
+                    if (APP_DATA.formularios.length > currentFormCount) {
+                        render();
+                        showToast('Novo formulário recebido!');
+                    }
+                }, 10000); // Atualiza a cada 10 segundos
+            }
         }
 
         function logout() {
@@ -562,8 +663,15 @@
             render();
         }
 
-        loadData();
-        render();
+        // Inicialização do sistema
+        async function initSystem() {
+            showToast('Carregando dados da nuvem...');
+            await loadData();
+            render();
+            showToast('Sistema carregado!');
+        }
+
+        initSystem();
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9955946d240a2507',t:'MTc2MTYwMzYxNy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9955a387f5e86294',t:'MTc2MTYwNDIzNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
