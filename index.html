@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestão</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            box-sizing: border-box;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-full">
+    <div id="app"></div>
+
+    <script>
+        const APP_DATA = {
+            users: [
+                { cpf: '07050776165', senha: '611969', tipo: 'admin', nome: 'Administrador' }
+            ],
+            formularios: [],
+            currentUser: null
+        };
+
+        function loadData() {
+            const saved = localStorage.getItem('appData');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                APP_DATA.users = parsed.users || APP_DATA.users;
+                APP_DATA.formularios = parsed.formularios || [];
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('appData', JSON.stringify({
+                users: APP_DATA.users,
+                formularios: APP_DATA.formularios
+            }));
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function formatCPF(value) {
+            const numbers = value.replace(/\D/g, '');
+            if (numbers.length <= 11) {
+                return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+            }
+            return value;
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            
+            if (!APP_DATA.currentUser) {
+                app.innerHTML = renderLogin();
+            } else if (APP_DATA.currentUser.tipo === 'admin') {
+                app.innerHTML = renderAdminDashboard();
+            } else {
+                app.innerHTML = renderUserDashboard();
+            }
+        }
+
+        function renderLogin() {
+            return `
+                <div class="min-h-full flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
+                        <div class="text-center mb-8">
+                            <div class="bg-indigo-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                </svg>
+                            </div>
+                            <h1 class="text-3xl font-bold text-gray-800">Sistema de Gestão</h1>
+                            <p class="text-gray-600 mt-2">Faça login para continuar</p>
+                        </div>
+
+                        <form onsubmit="handleLogin(event)" class="space-y-6">
+                            <div>
+                                <label for="cpf" class="block text-sm font-medium text-gray-700 mb-2">CPF</label>
+                                <input 
+                                    type="text" 
+                                    id="cpf" 
+                                    maxlength="14"
+                                    placeholder="000.000.000-00"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
+                                    required
+                                    oninput="this.value = formatCPF(this.value)"
+                                >
+                            </div>
+
+                            <div>
+                                <label for="senha" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+                                <input 
+                                    type="password" 
+                                    id="senha" 
+                                    placeholder="Digite sua senha"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
+                                    required
+                                >
+                            </div>
+
+                            <button 
+                                type="submit"
+                                class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition duration-200 shadow-lg hover:shadow-xl"
+                            >
+                                Entrar
+                            </button>
+                        </form>
+
+                        <div class="mt-6 text-center">
+                            <button 
+                                onclick="showRegisterForm()"
+                                class="text-indigo-600 hover:text-indigo-700 font-medium text-sm"
+                            >
+                                Não tem conta? Cadastre-se aqui
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdminDashboard() {
+            const totalFormularios = APP_DATA.formularios.length;
+            const totalUsuarios = APP_DATA.users.filter(u => u.tipo !== 'admin').length;
+
+            return `
+                <div class="min-h-full">
+                    <nav class="bg-white shadow-lg">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div class="flex justify-between items-center h-16">
+                                <div class="flex items-center">
+                                    <div class="bg-indigo-600 w-10 h-10 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                        </svg>
+                                    </div>
+                                    <span class="ml-3 text-xl font-bold text-gray-800">Painel Administrativo</span>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <span class="text-gray-700 font-medium">${APP_DATA.currentUser.nome}</span>
+                                    <button 
+                                        onclick="logout()"
+                                        class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
+                                    >
+                                        Sair
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div class="bg-white rounded-xl shadow-lg p-6 fade-in">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-gray-600 text-sm font-medium">Total de Formulários</p>
+                                        <p class="text-3xl font-bold text-indigo-600 mt-2">${totalFormularios}</p>
+                                    </div>
+                                    <div class="bg-indigo-100 w-12 h-12 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-lg p-6 fade-in">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-gray-600 text-sm font-medium">Usuários Cadastrados</p>
+                                        <p class="text-3xl font-bold text-green-600 mt-2">${totalUsuarios}</p>
+                                    </div>
+                                    <div class="bg-green-100 w-12 h-12 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-lg p-6 fade-in">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-gray-600 text-sm font-medium">Status do Sistema</p>
+                                        <p class="text-lg font-bold text-blue-600 mt-2">Operacional</p>
+                                    </div>
+                                    <div class="bg-blue-100 w-12 h-12 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-lg p-6">
+                            <div class="flex justify-between items-center mb-6">
+                                <h2 class="text-2xl font-bold text-gray-800">Formulários Recebidos</h2>
+                                <button 
+                                    onclick="refreshDashboard()"
+                                    class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center space-x-2"
+                                >
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    <span>Atualizar</span>
+                                </button>
+                            </div>
+
+                            ${APP_DATA.formularios.length === 0 ? `
+                                <div class="text-center py-12">
+                                    <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    <p class="text-gray-500 text-lg">Nenhum formulário recebido ainda</p>
+                                </div>
+                            ` : `
+                                <div class="overflow-x-auto">
+                                    <table class="w-full">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data/Hora</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Telefone</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mensagem</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            ${APP_DATA.formularios.map((form, index) => `
+                                                <tr class="hover:bg-gray-50 transition">
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${form.dataHora}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${form.usuarioNome}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${form.nome}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${form.email}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${form.telefone}</td>
+                                                    <td class="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">${form.mensagem}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                        <button 
+                                                            onclick="deleteFormulario(${index})"
+                                                            class="text-red-600 hover:text-red-800 font-medium"
+                                                        >
+                                                            Excluir
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `}
+                        </div>
+                    </main>
+                </div>
+            `;
+        }
+
+        function renderUserDashboard() {
+            return `
+                <div class="min-h-full">
+                    <nav class="bg-white shadow-lg">
+                        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div class="flex justify-between items-center h-16">
+                                <div class="flex items-center">
+                                    <div class="bg-green-600 w-10 h-10 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                        </svg>
+                                    </div>
+                                    <span class="ml-3 text-xl font-bold text-gray-800">Painel do Usuário</span>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <span class="text-gray-700 font-medium">${APP_DATA.currentUser.nome}</span>
+                                    <button 
+                                        onclick="logout()"
+                                        class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
+                                    >
+                                        Sair
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        <div class="bg-white rounded-xl shadow-lg p-8 fade-in">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Preencher Formulário</h2>
+                            
+                            <form onsubmit="handleFormSubmit(event)" class="space-y-6">
+                                <div>
+                                    <label for="nome" class="block text-sm font-medium text-gray-700 mb-2">Nome Completo</label>
+                                    <input 
+                                        type="text" 
+                                        id="nome" 
+                                        placeholder="Digite seu nome completo"
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                                        required
+                                    >
+                                </div>
+
+                                <div>
+                                    <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input 
+                                        type="email" 
+                                        id="email" 
+                                        placeholder="seu@email.com"
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                                        required
+                                    >
+                                </div>
+
+                                <div>
+                                    <label for="telefone" class="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
+                                    <input 
+                                        type="tel" 
+                                        id="telefone" 
+                                        placeholder="(00) 00000-0000"
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                                        required
+                                    >
+                                </div>
+
+                                <div>
+                                    <label for="mensagem" class="block text-sm font-medium text-gray-700 mb-2">Mensagem</label>
+                                    <textarea 
+                                        id="mensagem" 
+                                        rows="4"
+                                        placeholder="Digite sua mensagem aqui..."
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition resize-none"
+                                        required
+                                    ></textarea>
+                                </div>
+
+                                <button 
+                                    type="submit"
+                                    class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition duration-200 shadow-lg hover:shadow-xl"
+                                >
+                                    Enviar Formulário
+                                </button>
+                            </form>
+                        </div>
+                    </main>
+                </div>
+            `;
+        }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const cpf = document.getElementById('cpf').value.replace(/\D/g, '');
+            const senha = document.getElementById('senha').value;
+
+            const user = APP_DATA.users.find(u => u.cpf === cpf && u.senha === senha);
+
+            if (user) {
+                APP_DATA.currentUser = user;
+                showToast('Login realizado com sucesso!');
+                render();
+            } else {
+                showToast('CPF ou senha incorretos!', 'error');
+            }
+        }
+
+        function showRegisterForm() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="min-h-full flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
+                        <div class="text-center mb-8">
+                            <div class="bg-green-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                                </svg>
+                            </div>
+                            <h1 class="text-3xl font-bold text-gray-800">Cadastro de Usuário</h1>
+                            <p class="text-gray-600 mt-2">Preencha os dados para criar sua conta</p>
+                        </div>
+
+                        <form onsubmit="handleRegister(event)" class="space-y-6">
+                            <div>
+                                <label for="reg-nome" class="block text-sm font-medium text-gray-700 mb-2">Nome Completo</label>
+                                <input 
+                                    type="text" 
+                                    id="reg-nome" 
+                                    placeholder="Digite seu nome completo"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                                    required
+                                >
+                            </div>
+
+                            <div>
+                                <label for="reg-cpf" class="block text-sm font-medium text-gray-700 mb-2">CPF</label>
+                                <input 
+                                    type="text" 
+                                    id="reg-cpf" 
+                                    maxlength="14"
+                                    placeholder="000.000.000-00"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                                    required
+                                    oninput="this.value = formatCPF(this.value)"
+                                >
+                            </div>
+
+                            <div>
+                                <label for="reg-senha" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+                                <input 
+                                    type="password" 
+                                    id="reg-senha" 
+                                    placeholder="Crie uma senha"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                                    required
+                                >
+                            </div>
+
+                            <button 
+                                type="submit"
+                                class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition duration-200 shadow-lg hover:shadow-xl"
+                            >
+                                Cadastrar
+                            </button>
+                        </form>
+
+                        <div class="mt-6 text-center">
+                            <button 
+                                onclick="render()"
+                                class="text-green-600 hover:text-green-700 font-medium text-sm"
+                            >
+                                Já tem conta? Faça login
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleRegister(event) {
+            event.preventDefault();
+            const nome = document.getElementById('reg-nome').value;
+            const cpf = document.getElementById('reg-cpf').value.replace(/\D/g, '');
+            const senha = document.getElementById('reg-senha').value;
+
+            const exists = APP_DATA.users.find(u => u.cpf === cpf);
+            if (exists) {
+                showToast('CPF já cadastrado!', 'error');
+                return;
+            }
+
+            APP_DATA.users.push({
+                cpf: cpf,
+                senha: senha,
+                tipo: 'user',
+                nome: nome
+            });
+
+            saveData();
+            showToast('Cadastro realizado com sucesso!');
+            render();
+        }
+
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            const nome = document.getElementById('nome').value;
+            const email = document.getElementById('email').value;
+            const telefone = document.getElementById('telefone').value;
+            const mensagem = document.getElementById('mensagem').value;
+
+            const now = new Date();
+            const dataHora = now.toLocaleString('pt-BR');
+
+            APP_DATA.formularios.push({
+                nome,
+                email,
+                telefone,
+                mensagem,
+                dataHora,
+                usuarioNome: APP_DATA.currentUser.nome,
+                usuarioCPF: APP_DATA.currentUser.cpf
+            });
+
+            saveData();
+            showToast('Formulário enviado com sucesso!');
+            
+            document.getElementById('nome').value = '';
+            document.getElementById('email').value = '';
+            document.getElementById('telefone').value = '';
+            document.getElementById('mensagem').value = '';
+        }
+
+        function deleteFormulario(index) {
+            const deleteBtn = event.target;
+            const originalText = deleteBtn.textContent;
+            
+            deleteBtn.textContent = 'Confirmar?';
+            deleteBtn.classList.add('bg-red-100', 'px-2', 'py-1', 'rounded');
+            
+            const confirmDelete = () => {
+                APP_DATA.formularios.splice(index, 1);
+                saveData();
+                showToast('Formulário excluído!');
+                render();
+            };
+            
+            const cancelDelete = () => {
+                deleteBtn.textContent = originalText;
+                deleteBtn.classList.remove('bg-red-100', 'px-2', 'py-1', 'rounded');
+                deleteBtn.onclick = () => deleteFormulario(index);
+            };
+            
+            deleteBtn.onclick = confirmDelete;
+            
+            setTimeout(cancelDelete, 3000);
+        }
+
+        function refreshDashboard() {
+            showToast('Dashboard atualizado!');
+            render();
+        }
+
+        function logout() {
+            APP_DATA.currentUser = null;
+            showToast('Logout realizado com sucesso!');
+            render();
+        }
+
+        loadData();
+        render();
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9955946d240a2507',t:'MTc2MTYwMzYxNy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
